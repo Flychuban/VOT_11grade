@@ -1,0 +1,158 @@
+# Create the playbook
+cat > web_setup.yml << 'EOF'
+---
+- name: Set up web servers with custom content
+  hosts: nginx_servers
+  become: yes
+  
+  vars:
+    server_name: "{{ inventory_hostname }}"
+    
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+        
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        
+    - name: Ensure Nginx is running
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+        
+    - name: Create custom index page
+      copy:
+        dest: /var/www/html/index.html
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Ansible Managed Server - {{ server_name }}</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                margin: 40px;
+                line-height: 1.6;
+                text-align: center;
+                color: #333;
+              }
+              h1 { color: #2c3e50; }
+              .server-info {
+                background-color: #f8f9fa;
+                border-radius: 10px;
+                padding: 20px;
+                margin: 40px auto;
+                max-width: 600px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+              }
+              .status {
+                color: green;
+                font-weight: bold;
+              }
+              .timestamp {
+                font-style: italic;
+                margin-top: 30px;
+                color: #7f8c8d;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>Server Deployed with Ansible</h1>
+            <div class="server-info">
+              <h2>Server: {{ server_name }}</h2>
+              <p><span class="status">●</span> Running</p>
+              <p>IP Address: {{ ansible_host }}</p>
+              <p>Operating System: {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+              <p>Ansible Managed: Yes</p>
+            </div>
+            <div class="timestamp">
+              Page generated on: {{ ansible_date_time.iso8601 }}
+            </div>
+          </body>
+          </html>
+        backup: yes
+      notify: restart nginx
+      
+    - name: Configure Nginx server blocks
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            
+            root /var/www/html;
+            index index.html;
+            
+            server_name _;
+            
+            location / {
+              try_files $uri $uri/ =404;
+            }
+            
+            # Custom header to show Ansible management
+            add_header X-Managed-By "Ansible Automation";
+          }
+        backup: yes
+      notify: restart nginx
+      
+    - name: Create system info script
+      copy:
+        dest: /var/www/html/info.php
+        content: |
+          <?php
+          header('Content-Type: text/plain');
+          echo "HOSTNAME: " . gethostname() . "\n";
+          echo "DATE: " . date('Y-m-d H:i:s') . "\n";
+          echo "UPTIME: " . shell_exec('uptime') . "\n";
+          echo "MEMORY: \n" . shell_exec('free -m') . "\n";
+          echo "DISK USAGE: \n" . shell_exec('df -h') . "\n";
+          echo "ANSIBLE MANAGED: YES\n";
+          ?>
+        mode: '0644'
+      
+    - name: Install PHP for system info page
+      apt:
+        name: php-fpm
+        state: present
+      notify: restart nginx
+    
+    - name: Enable PHP in Nginx
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            
+            root /var/www/html;
+            index index.html index.php;
+            
+            server_name _;
+            
+            location / {
+              try_files $uri $uri/ =404;
+            }
+            
+            location ~ \.php$ {
+              include snippets/fastcgi-php.conf;
+              fastcgi_pass unix:/var/run/php/php-fpm.sock;
+            }
+            
+            # Custom header to show Ansible management
+            add_header X-Managed-By "Ansible Automation";
+          }
+        backup: yes
+      notify: restart nginx
+      
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+EOF

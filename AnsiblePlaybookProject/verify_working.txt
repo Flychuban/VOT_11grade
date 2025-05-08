@@ -1,0 +1,97 @@
+# Check if Nginx is running on ansible-master
+systemctl status nginx
+
+# Check if Nginx is running on db-node
+ssh db-node systemctl status nginx
+
+
+
+
+
+# Get the IP addresses
+echo "Master IP: $(hostname -I | awk '{print $1}')"
+echo "DB Node IP: $(ssh db-node hostname -I | awk '{print $1}')"
+
+# Test web server access
+curl http://localhost
+curl http://$(ssh db-node hostname -I | awk '{print $1}')
+
+# Test PHP info page
+curl http://localhost/info.php
+curl http://$(ssh db-node hostname -I | awk '{print $1}')/info.php
+
+
+
+
+
+
+cat > web_update.yml << 'EOF'
+---
+- name: Update web servers
+  hosts: nginx_servers
+  become: yes
+  
+  tasks:
+    - name: Update custom index page
+      copy:
+        dest: /var/www/html/index.html
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Ansible Managed Server - {{ inventory_hostname }}</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                margin: 40px;
+                line-height: 1.6;
+                text-align: center;
+                color: #333;
+              }
+              h1 { color: #e74c3c; }  <!-- Changed title color -->
+              .server-info {
+                background-color: #f8f9fa;
+                border-radius: 10px;
+                padding: 20px;
+                margin: 40px auto;
+                max-width: 600px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+              }
+              .status {
+                color: green;
+                font-weight: bold;
+              }
+              .timestamp {
+                font-style: italic;
+                margin-top: 30px;
+                color: #7f8c8d;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>Server Deployed with Ansible - Updated!</h1>
+            <div class="server-info">
+              <h2>Server: {{ inventory_hostname }}</h2>
+              <p><span class="status">●</span> Running</p>
+              <p>IP Address: {{ ansible_host }}</p>
+              <p>Operating System: {{ ansible_distribution }} {{ ansible_distribution_version }}</p>
+              <p>Ansible Managed: Yes</p>
+              <p>Last Updated: {{ ansible_date_time.iso8601 }}</p>
+            </div>
+            <div class="timestamp">
+              Page generated on: {{ ansible_date_time.iso8601 }}
+            </div>
+          </body>
+          </html>
+        backup: yes
+      notify: restart nginx
+      
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+EOF
+
+# Run the update playbook
+ansible-playbook -i inventory web_update.yml

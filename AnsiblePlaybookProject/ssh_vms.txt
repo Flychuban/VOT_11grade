@@ -1,0 +1,5 @@
+# Connect to ansible-master
+ssh -i ~/.ssh/id_ed25519 ubuntu@192.168.64.2
+
+# Connect to db-node
+ssh -i ~/.ssh/id_ed25519 ubuntu@192.168.64.3
